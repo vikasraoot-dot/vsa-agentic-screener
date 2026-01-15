@@ -50,9 +50,33 @@ def analyze_ticker(client, ticker, data):
     {json.dumps(data.get('daily_data', {}), indent=2)}
     """
     
+    model_id = 'gemini-1.5-flash' # Default
+    
+    # Dynamic model selection
+    try:
+        found_model = False
+        for m in client.models.list():
+            name = m.name.replace('models/', '')
+            if 'gemini' in name and 'flash' in name and 'audio' not in name:
+                model_id = name
+                found_model = True
+                break
+        
+        if not found_model:
+            # Fallback to pro if flash not found
+             for m in client.models.list():
+                name = m.name.replace('models/', '')
+                if 'gemini' in name and 'pro' in name:
+                    model_id = name
+                    break
+                    
+        logging.info(f"Selected model: {model_id}")
+    except Exception as e:
+        logging.warning(f"Model listing failed, using default: {e}")
+
     try:
         response = client.models.generate_content(
-            model='gemini-1.5-flash-002',
+            model=model_id,
             contents=system_instruction + "\n\n" + user_prompt
         )
         text = response.text
