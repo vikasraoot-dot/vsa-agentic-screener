@@ -55,11 +55,13 @@ def analyze_ticker(client, ticker, data):
     # Dynamic model selection
     try:
         found_model = False
-        # Explicitly prioritized models to avoid 2.5-flash (strict 20 RPD free limit)
+        # Explicitly prioritized models (1.5 Flash is most stable for free tier)
         priority_order = [
-            'gemini-2.0-flash', 
-            'gemini-1.5-flash', 
-            'gemini-flash'
+            'gemini-1.5-flash',
+            'gemini-1.5-flash-002',
+            'gemini-1.5-flash-001',
+            'gemini-1.5-pro',
+            'gemini-2.0-flash'
         ]
         
         available_models = []
@@ -170,7 +172,7 @@ def run_analysis():
         analysis = analyze_ticker(client, ticker, data)
         results[ticker] = analysis
         logging.info(f"Completed {ticker} - Verdict: {analysis.get('verdict')}")
-        time.sleep(10) # 10s Rate limiting buffer (Safer for large batches)
+        time.sleep(20) # 20s Rate limiting buffer (Conservative for large batches)
 
     with open(OUTPUT_FILE, 'w') as f:
         json.dump(results, f, indent=4)
