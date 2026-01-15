@@ -23,7 +23,7 @@ def configure_gemini():
     genai.configure(api_key=api_key)
 
 def analyze_ticker(ticker, data):
-    model = genai.GenerativeModel('gemini-1.5-pro') # Using Pro for better reasoning
+    model = genai.GenerativeModel('gemini-1.5-flash') # Using Flash for speed/reliability
     
     # Construct prompt
     system_instruction = """
