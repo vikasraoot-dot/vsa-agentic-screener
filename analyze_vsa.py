@@ -74,7 +74,7 @@ def analyze_ticker(client, ticker, data):
     except Exception as e:
         logging.warning(f"Model listing failed, using default: {e}")
 
-    max_retries = 3
+    max_retries = 10
     base_delay = 30
     
     for attempt in range(max_retries):
@@ -91,9 +91,19 @@ def analyze_ticker(client, ticker, data):
         except Exception as e:
             error_str = str(e)
             if "429" in error_str or "RESOURCE_EXHAUSTED" in error_str:
+                # Try to parse "retry in X s" from error message
+                wait_time = base_delay * (attempt + 1) # Default backoff
+                try:
+                    import re
+                    match = re.search(r'retry in (\d+\.?\d*)s', error_str)
+                    if match:
+                        wait_time = float(match.group(1)) + 5.0 # Add 5s buffer
+                        logging.info(f"API requested wait time: {match.group(1)}s. Waiting {wait_time}s.")
+                except:
+                    pass
+
                 if attempt < max_retries - 1:
-                    wait_time = base_delay * (attempt + 1)
-                    logging.warning(f"Rate limit hit for {ticker}. Retrying in {wait_time}s... (Attempt {attempt+1}/{max_retries})")
+                    logging.warning(f"Rate limit hit for {ticker}. Retrying in {wait_time:.2f}s... (Attempt {attempt+1}/{max_retries})")
                     time.sleep(wait_time)
                     continue
                 else:
