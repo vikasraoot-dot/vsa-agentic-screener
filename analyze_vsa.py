@@ -79,10 +79,11 @@ def analyze_ticker(client, ticker, data):
              if found_model:
                   break
 
-        # Fallback if no priority match found (try any flash except 2.5, then pro)
+        # Fallback if no priority match found (try any flash except 2.5/2.0, then pro)
         if not found_model:
             for m in available_models:
-                if 'gemini' in m and 'flash' in m and 'audio' not in m and '2.5' not in m:
+                # Exclude 2.5 (limit 20) and 2.0 (limit unknown/shared with exp)
+                if 'gemini' in m and 'flash' in m and 'audio' not in m and '2.5' not in m and '2.0' not in m:
                     model_id = m
                     found_model = True
                     break
