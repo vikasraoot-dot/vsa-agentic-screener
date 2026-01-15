@@ -52,7 +52,7 @@ def analyze_ticker(client, ticker, data):
     
     try:
         response = client.models.generate_content(
-            model='gemini-1.5-flash',
+            model='gemini-1.5-flash-002',
             contents=system_instruction + "\n\n" + user_prompt
         )
         text = response.text
@@ -61,6 +61,14 @@ def analyze_ticker(client, ticker, data):
         return json.loads(text)
     except Exception as e:
         logging.error(f"Error analyzing {ticker}: {e}")
+        # Try to list models to help debug
+        try:
+            logging.info("Attempting to list available models for debugging...")
+            for m in client.models.list():
+                logging.info(f"Available model: {m.name}")
+        except Exception as list_e:
+            logging.error(f"Could not list models: {list_e}")
+            
         return {
             "error": str(e),
             "verdict": "ERROR"
