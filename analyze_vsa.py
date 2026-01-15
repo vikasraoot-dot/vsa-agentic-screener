@@ -56,12 +56,12 @@ def analyze_ticker(client, ticker, data):
     try:
         found_model = False
         # Explicitly prioritized models (1.5 Flash is most stable for free tier)
+        # Removed 2.0 entirely because 'gemini-2.0-flash-exp' is also hitting rate limits.
         priority_order = [
             'gemini-1.5-flash',
             'gemini-1.5-flash-002',
             'gemini-1.5-flash-001',
-            'gemini-1.5-pro',
-            'gemini-2.0-flash'
+            'gemini-1.5-pro'
         ]
         
         available_models = []
