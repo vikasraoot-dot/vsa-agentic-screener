@@ -44,6 +44,37 @@ def generate_markdown(results):
         else:
             categories["OTHER"].append((ticker, data))
 
+    # Sort categories for the summary table (Priority: Ready for Entry > Ready for Exit > Monitoring > Other)
+    summary_priority = []
+    summary_priority.extend(categories["READY FOR ENTRY"])
+    summary_priority.extend(categories["READY FOR EXIT"])
+    summary_priority.extend(categories["MONITORING"])
+    summary_priority.extend(categories["OTHER"])
+    
+    # Generate Summary Table
+    if summary_priority:
+        report_lines.append("## 📊 Summary Table")
+        report_lines.append("| Ticker | Verdict | Stage | Action / Trigger |")
+        report_lines.append("| :--- | :--- | :--- | :--- |")
+        
+        for ticker, data in summary_priority:
+            verdict = data.get('verdict', 'N/A')
+            stage = data.get('setup_stage', 'N/A')
+            
+            # Combine trigger info for brevity
+            trigger = data.get('entry_trigger') or data.get('exit_trigger') or "Monitor"
+            # Truncate long trigger text for table
+            if len(trigger) > 100:
+                trigger = trigger[:97] + "..."
+            
+            # Add emoji based on verdict
+            verdict_icon = "🟢" if "BULL" in verdict.upper() else "🔴" if "BEAR" in verdict.upper() else "⚪"
+            
+            report_lines.append(f"| **{ticker}** | {verdict_icon} {verdict} | {stage} | {trigger} |")
+        
+        report_lines.append("")
+        report_lines.append("---")
+
     # Helper function to write a section
     def write_section(title, items):
         if not items:
