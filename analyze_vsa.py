@@ -55,19 +55,41 @@ def analyze_ticker(client, ticker, data):
     # Dynamic model selection
     try:
         found_model = False
+        # Explicitly prioritized models to avoid 2.5-flash (strict 20 RPD free limit)
+        priority_order = [
+            'gemini-2.0-flash', 
+            'gemini-1.5-flash', 
+            'gemini-flash'
+        ]
+        
+        available_models = []
         for m in client.models.list():
-            name = m.name.replace('models/', '')
-            if 'gemini' in name and 'flash' in name and 'audio' not in name:
-                model_id = name
-                found_model = True
-                break
+             available_models.append(m.name.replace('models/', ''))
+             
+        # Try to find a match in our priority list first
+        for preferred in priority_order:
+             # Look for exact or close match
+             for m in available_models:
+                  if preferred in m and 'audio' not in m and '2.5' not in m:
+                       model_id = m
+                       found_model = True
+                       break
+             if found_model:
+                  break
+
+        # Fallback if no priority match found (try any flash except 2.5, then pro)
+        if not found_model:
+            for m in available_models:
+                if 'gemini' in m and 'flash' in m and 'audio' not in m and '2.5' not in m:
+                    model_id = m
+                    found_model = True
+                    break
         
         if not found_model:
             # Fallback to pro if flash not found
-             for m in client.models.list():
-                name = m.name.replace('models/', '')
-                if 'gemini' in name and 'pro' in name:
-                    model_id = name
+             for m in available_models:
+                if 'gemini' in m and 'pro' in m and '2.5' not in m:
+                    model_id = m
                     break
                     
         logging.info(f"Selected model: {model_id}")
