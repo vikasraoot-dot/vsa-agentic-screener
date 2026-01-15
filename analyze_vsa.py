@@ -1,7 +1,7 @@
 import json
 import os
 import logging
-import google.generativeai as genai
+from google import genai
 import time
 
 # Configure logging
@@ -16,15 +16,7 @@ def load_filtered_tickers():
     with open(INPUT_FILE, 'r') as f:
         return json.load(f)
 
-def configure_gemini():
-    api_key = os.environ.get("GEMINI_API_KEY")
-    if not api_key:
-        raise ValueError("GEMINI_API_KEY environment variable not set")
-    genai.configure(api_key=api_key)
-
-def analyze_ticker(ticker, data):
-    model = genai.GenerativeModel('gemini-1.5-flash') # Using Flash for speed/reliability
-    
+def analyze_ticker(client, ticker, data):
     # Construct prompt
     system_instruction = """
     Act as a Master Volume Spread Analysis (VSA) Expert. Analyze the provided multi-timeframe data (Monthly, Weekly, Daily).
@@ -59,7 +51,10 @@ def analyze_ticker(ticker, data):
     """
     
     try:
-        response = model.generate_content(system_instruction + "\n\n" + user_prompt)
+        response = client.models.generate_content(
+            model='gemini-1.5-flash',
+            contents=system_instruction + "\n\n" + user_prompt
+        )
         text = response.text
         # Clean up code blocks if present
         text = text.replace("```json", "").replace("```", "").strip()
@@ -77,8 +72,13 @@ def run_analysis():
         logging.info("No tickers to analyze.")
         return
 
+    api_key = os.environ.get("GEMINI_API_KEY")
+    if not api_key:
+        logging.error("GEMINI_API_KEY environment variable not set")
+        return
+
     try:
-        configure_gemini()
+        client = genai.Client(api_key=api_key)
     except Exception as e:
         logging.error(f"Configuration failed: {e}")
         return
@@ -87,7 +87,7 @@ def run_analysis():
     
     for ticker, data in tickers_data.items():
         logging.info(f"Analyzing {ticker}...")
-        analysis = analyze_ticker(ticker, data)
+        analysis = analyze_ticker(client, ticker, data)
         results[ticker] = analysis
         logging.info(f"Completed {ticker} - Verdict: {analysis.get('verdict')}")
         time.sleep(4) # Rate limiting buffer
