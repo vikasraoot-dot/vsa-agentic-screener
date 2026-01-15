@@ -74,29 +74,45 @@ def analyze_ticker(client, ticker, data):
     except Exception as e:
         logging.warning(f"Model listing failed, using default: {e}")
 
-    try:
-        response = client.models.generate_content(
-            model=model_id,
-            contents=system_instruction + "\n\n" + user_prompt
-        )
-        text = response.text
-        # Clean up code blocks if present
-        text = text.replace("```json", "").replace("```", "").strip()
-        return json.loads(text)
-    except Exception as e:
-        logging.error(f"Error analyzing {ticker}: {e}")
-        # Try to list models to help debug
+    max_retries = 3
+    base_delay = 30
+    
+    for attempt in range(max_retries):
         try:
-            logging.info("Attempting to list available models for debugging...")
-            for m in client.models.list():
-                logging.info(f"Available model: {m.name}")
-        except Exception as list_e:
-            logging.error(f"Could not list models: {list_e}")
+            response = client.models.generate_content(
+                model=model_id,
+                contents=system_instruction + "\n\n" + user_prompt
+            )
+            text = response.text
+            # Clean up code blocks if present
+            text = text.replace("```json", "").replace("```", "").strip()
+            return json.loads(text)
             
-        return {
-            "error": str(e),
-            "verdict": "ERROR"
-        }
+        except Exception as e:
+            error_str = str(e)
+            if "429" in error_str or "RESOURCE_EXHAUSTED" in error_str:
+                if attempt < max_retries - 1:
+                    wait_time = base_delay * (attempt + 1)
+                    logging.warning(f"Rate limit hit for {ticker}. Retrying in {wait_time}s... (Attempt {attempt+1}/{max_retries})")
+                    time.sleep(wait_time)
+                    continue
+                else:
+                    logging.error(f"Max retries exceeded for {ticker} rate limit.")
+            
+            logging.error(f"Error analyzing {ticker}: {e}")
+            # Try to list models to help debug (only on first non-429 error)
+            if "429" not in error_str:
+                try:
+                    logging.info("Attempting to list available models for debugging...")
+                    for m in client.models.list():
+                        logging.info(f"Available model: {m.name}")
+                except Exception as list_e:
+                    logging.error(f"Could not list models: {list_e}")
+                
+            return {
+                "error": str(e),
+                "verdict": "ERROR"
+            }
 
 def run_analysis():
     tickers_data = load_filtered_tickers()
@@ -122,7 +138,7 @@ def run_analysis():
         analysis = analyze_ticker(client, ticker, data)
         results[ticker] = analysis
         logging.info(f"Completed {ticker} - Verdict: {analysis.get('verdict')}")
-        time.sleep(4) # Rate limiting buffer
+        time.sleep(10) # 10s Rate limiting buffer (Safer for large batches)
 
     with open(OUTPUT_FILE, 'w') as f:
         json.dump(results, f, indent=4)
