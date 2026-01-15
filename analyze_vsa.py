@@ -1,0 +1,100 @@
+import json
+import os
+import logging
+import google.generativeai as genai
+import time
+
+# Configure logging
+logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(message)s')
+
+INPUT_FILE = 'filtered_tickers.json'
+OUTPUT_FILE = 'vsa_results.json'
+
+def load_filtered_tickers():
+    if not os.path.exists(INPUT_FILE):
+        return {}
+    with open(INPUT_FILE, 'r') as f:
+        return json.load(f)
+
+def configure_gemini():
+    api_key = os.environ.get("GEMINI_API_KEY")
+    if not api_key:
+        raise ValueError("GEMINI_API_KEY environment variable not set")
+    genai.configure(api_key=api_key)
+
+def analyze_ticker(ticker, data):
+    model = genai.GenerativeModel('gemini-1.5-pro') # Using Pro for better reasoning
+    
+    # Construct prompt
+    system_instruction = """
+    Act as a Master Volume Spread Analysis (VSA) Expert. Analyze the provided multi-timeframe data (Monthly, Weekly, Daily).
+    The data provided is a JSON object with OHLCV data for specific timeframes.
+    
+    You must output your analysis in valid JSON format ONLY, with no markdown formatting. The JSON should have the following keys:
+    - "vsa_status": string (e.g., "Mark-up", "Absorption", "Stopping Volume", "No Supply", "Test", "Jumping the Creek", etc.)
+    - "verdict": string (e.g., "BULLISH", "BEARISH", "NEUTRAL")
+    - "correlation_analysis": string (How Monthly/Weekly structure influences Daily setup)
+    - "smart_money_logic": string (Intent behind volume spikes)
+    - "key_levels": list of strings (e.g. ["Support at 150", "Resistance at 180"])
+    - "setup_stage": string (e.g. "Ready for Entry", "Ready for Exit", "Monitoring")
+    - "entry_trigger": string (Specific price/volume condition to wait for)
+    - "exit_trigger": string
+    - "volume_requirement": string
+    - "invalidation_level": string
+    """
+    
+    user_prompt = f"""
+    Analyze the following data for {ticker}:
+    
+    Trigger Reason: {data.get('reason')}
+    
+    Monthly Data (Last 25 bars):
+    {json.dumps(data.get('monthly_data', {}), indent=2)}
+    
+    Weekly Data (Last 25 bars):
+    {json.dumps(data.get('weekly_data', {}), indent=2)}
+    
+    Daily Data (Last 60 bars):
+    {json.dumps(data.get('daily_data', {}), indent=2)}
+    """
+    
+    try:
+        response = model.generate_content(system_instruction + "\n\n" + user_prompt)
+        text = response.text
+        # Clean up code blocks if present
+        text = text.replace("```json", "").replace("```", "").strip()
+        return json.loads(text)
+    except Exception as e:
+        logging.error(f"Error analyzing {ticker}: {e}")
+        return {
+            "error": str(e),
+            "verdict": "ERROR"
+        }
+
+def run_analysis():
+    tickers_data = load_filtered_tickers()
+    if not tickers_data:
+        logging.info("No tickers to analyze.")
+        return
+
+    try:
+        configure_gemini()
+    except Exception as e:
+        logging.error(f"Configuration failed: {e}")
+        return
+
+    results = {}
+    
+    for ticker, data in tickers_data.items():
+        logging.info(f"Analyzing {ticker}...")
+        analysis = analyze_ticker(ticker, data)
+        results[ticker] = analysis
+        logging.info(f"Completed {ticker} - Verdict: {analysis.get('verdict')}")
+        time.sleep(4) # Rate limiting buffer
+
+    with open(OUTPUT_FILE, 'w') as f:
+        json.dump(results, f, indent=4)
+    logging.info(f"Analysis complete. Results saved to {OUTPUT_FILE}")
+
+if __name__ == "__main__":
+    run_analysis()
