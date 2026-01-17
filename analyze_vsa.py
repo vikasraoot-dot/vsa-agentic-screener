@@ -133,7 +133,7 @@ def run_analysis():
     logging.info(f"Context: {market_context}")
 
     # Batching config
-    BATCH_SIZE = 5
+    BATCH_SIZE = 50
     model_id = 'gemini-flash-latest' # Maps to 1.5 Flash usually
     
     results = {}
