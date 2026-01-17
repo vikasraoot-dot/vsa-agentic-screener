@@ -1,8 +1,9 @@
 import json
 import os
 import logging
-from google import genai
+import google.generativeai as genai
 import time
+import yfinance as yf
 
 # Configure logging
 logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(message)s')
@@ -16,138 +17,98 @@ def load_filtered_tickers():
     with open(INPUT_FILE, 'r') as f:
         return json.load(f)
 
-def analyze_ticker(client, ticker, data):
-    # Construct prompt
-    system_instruction = """
-    Act as a Master Volume Spread Analysis (VSA) Expert. Analyze the provided multi-timeframe data (Monthly, Weekly, Daily).
-    The data provided is a JSON object with OHLCV data for specific timeframes.
-    
-    You must output your analysis in valid JSON format ONLY, with no markdown formatting. The JSON should have the following keys:
-    - "vsa_status": string (e.g., "Mark-up", "Absorption", "Stopping Volume", "No Supply", "Test", "Jumping the Creek", etc.)
-    - "verdict": string (e.g., "BULLISH", "BEARISH", "NEUTRAL")
-    - "correlation_analysis": string (How Monthly/Weekly structure influences Daily setup)
-    - "smart_money_logic": string (Intent behind volume spikes)
-    - "key_levels": list of strings (e.g. ["Support at 150", "Resistance at 180"])
-    - "setup_stage": string (e.g. "Ready for Entry", "Ready for Exit", "Monitoring")
-    - "entry_trigger": string (Specific price/volume condition to wait for)
-    - "exit_trigger": string
-    - "volume_requirement": string
-    - "invalidation_level": string
-    """
-    
-    user_prompt = f"""
-    Analyze the following data for {ticker}:
-    
-    Trigger Reason: {data.get('reason')}
-    
-    Monthly Data (Last 25 bars):
-    {json.dumps(data.get('monthly_data', {}), indent=2)}
-    
-    Weekly Data (Last 25 bars):
-    {json.dumps(data.get('weekly_data', {}), indent=2)}
-    
-    Daily Data (Last 60 bars):
-    {json.dumps(data.get('daily_data', {}), indent=2)}
-    """
-    
-    model_id = 'gemini-1.5-flash' # Default
-    
-    # Dynamic model selection
+def get_market_context():
+    """Calculates SPY context: Trend (SMA20 vs SMA50) and Last Bar VSA."""
     try:
-        found_model = False
-        # Explicitly prioritized models (1.5 Flash is most stable for free tier)
-        # Removed 2.0 entirely because 'gemini-2.0-flash-exp' is also hitting rate limits.
-        priority_order = [
-            'gemini-1.5-flash',
-            'gemini-1.5-flash-002',
-            'gemini-1.5-flash-001',
-            'gemini-1.5-pro'
-        ]
+        spy = yf.Ticker("SPY")
+        history = spy.history(period="1y", interval="1d")
+        if len(history) < 50:
+             return "Market Context: Data Unavailable"
         
-        available_models = []
-        for m in client.models.list():
-             available_models.append(m.name.replace('models/', ''))
-             
-        # Try to find a match in our priority list first
-        for preferred in priority_order:
-             # Look for exact or close match
-             for m in available_models:
-                  if preferred in m and 'audio' not in m and '2.5' not in m:
-                       model_id = m
-                       found_model = True
-                       break
-             if found_model:
-                  break
-
-        # Fallback if no priority match found (try any flash except 2.5/2.0, then pro)
-        if not found_model:
-            for m in available_models:
-                # Exclude 2.5 (limit 20) and 2.0 (limit unknown/shared with exp)
-                if 'gemini' in m and 'flash' in m and 'audio' not in m and '2.5' not in m and '2.0' not in m:
-                    model_id = m
-                    found_model = True
-                    break
+        # Calculate Trend
+        sma20 = history['Close'].rolling(20).mean().iloc[-1]
+        sma50 = history['Close'].rolling(50).mean().iloc[-1]
         
-        if not found_model:
-            # Fallback to pro if flash not found
-             for m in available_models:
-                if 'gemini' in m and 'pro' in m and '2.5' not in m:
-                    model_id = m
-                    break
-                    
-        logging.info(f"Selected model: {model_id}")
+        trend = "BULLISH" if sma20 > sma50 else "BEARISH"
+        if abs(sma20 - sma50) / sma50 < 0.01:
+            trend = "SIDEWAYS/CHOPPY"
+            
+        # Analysis of last bar
+        last_close = history['Close'].iloc[-1]
+        prev_close = history['Close'].iloc[-2]
+        move = "UP" if last_close > prev_close else "DOWN"
+        
+        return f"General Market (SPY) Trend: {trend}. Last Day Move: {move}."
     except Exception as e:
-        logging.warning(f"Model listing failed, using default: {e}")
+        logging.warning(f"Failed to fetch market context: {e}")
+        return "Market Context: Data Unavailable"
 
-    max_retries = 10
+def analyze_batch(model_id, batch_data, market_context):
+    api_key = os.environ.get("GEMINI_API_KEY")
+    genai.configure(api_key=api_key)
+    
+    # Construct prompt for multiple tickers
+    system_instruction = """
+    Act as a Master Volume Spread Analysis (VSA) Expert. 
+    Analyze the provided data for multiple tickers. 
+    
+    For EACH ticker, you must output a JSON object with the following keys:
+    - "ticker": string
+    - "vsa_status": string (e.g., "No Supply", "Stopping Volume", "Test", "Effort No Result")
+    - "verdict": string (e.g., "BULLISH", "BEARISH", "NEUTRAL")
+    - "smart_money_logic": string (Explain volume/price behavior)
+    - "key_levels": list of strings
+    - "setup_stage": string (e.g. "Ready for Entry", "Monitoring")
+    - "entry_trigger": string
+    - "invalidation_level": string
+
+    Output must be a JSON LIST of objects, e.g. [{...}, {...}]. 
+    Do NOT use markdown code blocks. Just valid JSON.
+    """
+    
+    # Minimize data to fit context and save tokens
+    # specific_data will be a compact string representation
+    batch_prompt_content = f"Context: {market_context}\n\nAnalyze these tickers:\n"
+    
+    for ticker, data in batch_data.items():
+        batch_prompt_content += f"\n--- Ticker: {ticker} ---\n"
+        batch_prompt_content += f"Trigger: {data.get('reason')}\n"
+        # Only take last 5 weekly and 3 monthly to save tokens, focusing on recent behavior
+        weekly_subset = dict(list(data.get('weekly_data', {}).items())[-5:])
+        monthly_subset = dict(list(data.get('monthly_data', {}).items())[-3:])
+        batch_prompt_content += f"Weekly (last 5): {json.dumps(weekly_subset)}\n"
+        batch_prompt_content += f"Monthly (last 3): {json.dumps(monthly_subset)}\n"
+
+    max_retries = 5
     base_delay = 30
     
     for attempt in range(max_retries):
         try:
-            response = client.models.generate_content(
-                model=model_id,
-                contents=system_instruction + "\n\n" + user_prompt
+            model = genai.GenerativeModel(model_id)
+            response = model.generate_content(
+                system_instruction + "\n\n" + batch_prompt_content
             )
             text = response.text
-            # Clean up code blocks if present
             text = text.replace("```json", "").replace("```", "").strip()
+            
+            # Ensure it's a list
+            if text.startswith('{'):
+                text = f"[{text}]"
+                
             return json.loads(text)
             
         except Exception as e:
             error_str = str(e)
             if "429" in error_str or "RESOURCE_EXHAUSTED" in error_str:
-                # Try to parse "retry in X s" from error message
-                wait_time = base_delay * (attempt + 1) # Default backoff
-                try:
-                    import re
-                    match = re.search(r'retry in (\d+\.?\d*)s', error_str)
-                    if match:
-                        wait_time = float(match.group(1)) + 5.0 # Add 5s buffer
-                        logging.info(f"API requested wait time: {match.group(1)}s. Waiting {wait_time}s.")
-                except:
-                    pass
-
-                if attempt < max_retries - 1:
-                    logging.warning(f"Rate limit hit for {ticker}. Retrying in {wait_time:.2f}s... (Attempt {attempt+1}/{max_retries})")
-                    time.sleep(wait_time)
-                    continue
-                else:
-                    logging.error(f"Max retries exceeded for {ticker} rate limit.")
+                wait_time = base_delay * (attempt + 1) + 10
+                logging.warning(f"Rate limit hit. Retrying in {wait_time}s...")
+                time.sleep(wait_time)
+                continue
             
-            logging.error(f"Error analyzing {ticker}: {e}")
-            # Try to list models to help debug (only on first non-429 error)
-            if "429" not in error_str:
-                try:
-                    logging.info("Attempting to list available models for debugging...")
-                    for m in client.models.list():
-                        logging.info(f"Available model: {m.name}")
-                except Exception as list_e:
-                    logging.error(f"Could not list models: {list_e}")
-                
-            return {
-                "error": str(e),
-                "verdict": "ERROR"
-            }
+            logging.error(f"Error analyzing batch: {e}")
+            return []
+
+    return []
 
 def run_analysis():
     tickers_data = load_filtered_tickers()
@@ -161,20 +122,43 @@ def run_analysis():
         return
 
     try:
-        client = genai.Client(api_key=api_key)
+        genai.configure(api_key=api_key)
     except Exception as e:
         logging.error(f"Configuration failed: {e}")
         return
 
-    results = {}
-    
-    for ticker, data in tickers_data.items():
-        logging.info(f"Analyzing {ticker}...")
-        analysis = analyze_ticker(client, ticker, data)
-        results[ticker] = analysis
-        logging.info(f"Completed {ticker} - Verdict: {analysis.get('verdict')}")
-        time.sleep(20) # 20s Rate limiting buffer (Conservative for large batches)
+    # Fetch Market Context
+    logging.info("Fetching Market Context (SPY)...")
+    market_context = get_market_context()
+    logging.info(f"Context: {market_context}")
 
+    # Batching config
+    BATCH_SIZE = 5
+    model_id = 'gemini-flash-latest' # Maps to 1.5 Flash usually
+    
+    results = {}
+    ticker_list = list(tickers_data.keys())
+    
+    for i in range(0, len(ticker_list), BATCH_SIZE):
+        batch_keys = ticker_list[i:i + BATCH_SIZE]
+        batch_data = {k: tickers_data[k] for k in batch_keys}
+        
+        logging.info(f"Processing batch {i//BATCH_SIZE + 1}: {batch_keys}")
+        
+        batch_results = analyze_batch(model_id, batch_data, market_context)
+        
+        # Merge results
+        if isinstance(batch_results, list):
+            for res in batch_results:
+                ticker = res.get('ticker')
+                if ticker:
+                    if ticker not in batch_keys: 
+                        logging.warning(f"LLM hallucinated ticker {ticker} not in batch {batch_keys}")
+                    else:
+                        results[ticker] = res
+        
+        time.sleep(15) # Buffer between batches
+        
     with open(OUTPUT_FILE, 'w') as f:
         json.dump(results, f, indent=4)
     logging.info(f"Analysis complete. Results saved to {OUTPUT_FILE}")

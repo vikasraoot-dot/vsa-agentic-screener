@@ -54,23 +54,24 @@ def generate_markdown(results):
     # Generate Summary Table
     if summary_priority:
         report_lines.append("## 📊 Summary Table")
-        report_lines.append("| Ticker | Verdict | Stage | Action / Trigger |")
-        report_lines.append("| :--- | :--- | :--- | :--- |")
+        report_lines.append("| Ticker | Verdict | Pattern (VSA) | Stage | Action |")
+        report_lines.append("| :--- | :--- | :--- | :--- | :--- |")
         
         for ticker, data in summary_priority:
             verdict = data.get('verdict', 'N/A')
             stage = data.get('setup_stage', 'N/A')
+            pattern = data.get('vsa_status', 'N/A')
             
             # Combine trigger info for brevity
-            trigger = data.get('entry_trigger') or data.get('exit_trigger') or "Monitor"
+            trigger = data.get('entry_trigger') or "Monitor"
             # Truncate long trigger text for table
-            if len(trigger) > 100:
-                trigger = trigger[:97] + "..."
+            if len(trigger) > 50:
+                trigger = trigger[:47] + "..."
             
             # Add emoji based on verdict
             verdict_icon = "🟢" if "BULL" in verdict.upper() else "🔴" if "BEAR" in verdict.upper() else "⚪"
             
-            report_lines.append(f"| **{ticker}** | {verdict_icon} {verdict} | {stage} | {trigger} |")
+            report_lines.append(f"| **{ticker}** | {verdict_icon} {verdict} | {pattern} | {stage} | {trigger} |")
         
         report_lines.append("")
         report_lines.append("---")
@@ -87,18 +88,13 @@ def generate_markdown(results):
             report_lines.append(f"**Smart Money Logic:**")
             report_lines.append(f"{data.get('smart_money_logic', 'N/A')}")
             report_lines.append(f"")
-            report_lines.append(f"**Correlation:**")
-            report_lines.append(f"{data.get('correlation_analysis', 'N/A')}")
-            report_lines.append(f"")
-            report_lines.append(f"**Key Levels:** {', '.join(data.get('key_levels', []))}")
+            report_lines.append(f"**Key Levels:** {', '.join(data.get('key_levels', []) if isinstance(data.get('key_levels'), list) else [str(data.get('key_levels'))])}")
             report_lines.append(f"")
             
             # Actionable info
             report_lines.append(f"#### Action Plan")
             report_lines.append(f"- **Entry Trigger:** {data.get('entry_trigger', 'N/A')}")
-            report_lines.append(f"- **Volume Req:** {data.get('volume_requirement', 'N/A')}")
             report_lines.append(f"- **Invalidation:** {data.get('invalidation_level', 'N/A')}")
-            report_lines.append(f"- **Exit Trigger:** {data.get('exit_trigger', 'N/A')}")
             report_lines.append(f"---")
 
     write_section("🚀 Ready for Entry", categories["READY FOR ENTRY"])

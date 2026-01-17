@@ -1,4 +1,5 @@
 yfinance
 pandas
-google-genai
+google-generativeai
 ta-lib
+numpy
