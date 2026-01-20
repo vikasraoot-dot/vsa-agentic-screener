@@ -47,3 +47,12 @@ jobs:
         git add reports/*.md
         # Only commit if there are changes
         git diff --quiet && git diff --staged --quiet || (git commit -m "Add VSA Report $(date +'%Y-%m-%d')" && git push)
+
+    - name: Upload VSA Artifacts
+      uses: actions/upload-artifact@v4
+      with:
+        name: vsa-daily-results
+        path: |
+          reports/
+          vsa_results.json
+          filtered_tickers.json
