@@ -104,6 +104,129 @@ def generate_markdown(results):
     
     return "\n".join(report_lines)
 
+def generate_csv(results):
+    import csv
+    import io
+    
+    output = io.StringIO()
+    
+    
+    # Write Legend to separate file
+    legend_path = f"{REPORT_DIR}/REPORT_LEGEND.txt"
+    with open(legend_path, 'w') as f:
+        f.write("VSA SCREENER RESULTS - LEGEND\n")
+        f.write("-----------------------------\n")
+        f.write("CLV (Close Location Value): +1.0 (High Close) to -1.0 (Low Close). >0.5 Bullish, <-0.5 Bearish.\n")
+        f.write("RelVol (Relative Volume): Ratio vs 20SMA. >1.5 High, >2.0 Ultra High, <0.7 Low.\n")
+        f.write("PRIORITIES:\n")
+        f.write("  VERY_HIGH: Monthly Confirmed + Weekly Confirmed (Perfect Alignment)\n")
+        f.write("  HIGH: Monthly Confirmed + Weekly Stopping Volume (Sequence Early) OR Monthly Context + Weekly Confirmed\n")
+        f.write("  MEDIUM: Weekly Confirmed (No Monthly support) OR Monthly Confirmed (No Weekly support)\n")
+        f.write("  LOW: Watchlist only (Accumulation detected but no confirmation)\n")
+        f.write("ACTION:\n")
+        f.write("  ENTER_NOW: Confirmed Signal + Daily Trigger Met\n")
+        f.write("  WAIT_FOR_TEST: Anchor found, waiting for Test\n")
+        f.write("COLUMNS:\n")
+        f.write("  Anchor_Date: The date of the initial VSA signal. Types:\n")
+        f.write("     - STOPPING_VOLUME: Bullish Anchor (Down bar, High Vol, Close off lows)\n")
+        f.write("     - BUYING_CLIMAX: Bearish Anchor (Up bar, High Vol, Weak Close)\n")
+        f.write("     - SUPPLY_DOMINANCE: Bearish Anchor (Down bar, High Vol, Weak Close)\n")
+        f.write("  Test1/Test2_Date: The dates of subsequent confirmation bars (Tests) on the same timeframe.\n")
+        f.write("  Daily_Confirmation: 'TEST_OBSERVED' if a Test pattern appeared on the Daily chart in the last 5 days.\n")
+    
+    headers = [
+        "Ticker",
+        "Quarterly_Context",
+        "Monthly_Context",
+        "Weekly_Context",
+        "Monthly_Signal",
+        "Monthly_Anchor_Date",
+        "Monthly_Test1_Date",
+        "Monthly_Test2_Date",
+        "Weekly_Signal",
+        "Weekly_Anchor_Date",
+        "Weekly_Test1_Date",
+        "Weekly_Test2_Date",
+        "Daily_Confirmation",
+        "Verdict",
+        "Priority",
+        "Action",
+        "Entry_Trigger",
+        "Invalidation",
+        "Key_Level_Support",
+        "Key_Level_Resistance",
+        "Weekly_CLV",
+        "Weekly_RelVol",
+        "Current_Price"
+    ]
+    
+    writer = csv.DictWriter(output, fieldnames=headers, lineterminator='\n')
+    writer.writeheader()
+    
+    for ticker, data in results.items():
+        if "error" in data:
+            continue
+            
+        # Parse Monthly/Weekly Signals (which might be dicts or strings depending on source)
+        # From filter_tickers, they are dicts: {'type':..., 'status':..., 'anchor_date':...}
+        m_sig = data.get('monthly_signal', {})
+        w_sig = data.get('weekly_signal', {})
+        
+        # Helper to format signal string from dict
+        def fmt_sig(sig_dict):
+            if not isinstance(sig_dict, dict): return str(sig_dict)
+            t = sig_dict.get('type')
+            s = sig_dict.get('status')
+            if not t: return "NONE"
+            return f"{t}_{s}"
+
+        # Determine Action
+        action = "MONITOR"
+        w_status = w_sig.get('status', '')
+        if "CONFIRMED" in w_status and data.get('daily_confirmation') == "TEST_OBSERVED":
+            action = "ENTER_NOW"
+        elif "CONFIRMED" in w_status:
+            action = "ENTER_PENDING_DAILY"
+        elif "WATCH" in w_status:
+            action = "WAIT_FOR_TEST"
+
+        row = {
+            "Ticker": ticker,
+            "Quarterly_Context": data.get('quarterly_context', 'N/A'),
+            "Monthly_Context": data.get('monthly_context', 'N/A'),
+            
+            "Monthly_Signal": fmt_sig(m_sig),
+            "Monthly_Anchor_Date": m_sig.get('anchor_date', ''),
+            "Monthly_Test1_Date": m_sig.get('test1_date', ''),
+            "Monthly_Test2_Date": m_sig.get('test2_date', ''),
+            
+            "Weekly_Context": data.get('weekly_context', 'N/A'),
+            "Weekly_Signal": fmt_sig(w_sig),
+            "Weekly_Anchor_Date": w_sig.get('anchor_date', ''),
+            "Weekly_Test1_Date": w_sig.get('test1_date', ''),
+            "Weekly_Test2_Date": w_sig.get('test2_date', ''),
+            
+            "Daily_Confirmation": data.get('daily_confirmation', 'NONE'),
+            
+            "Verdict": data.get('verdict', 'NEUTRAL'),
+            "Priority": data.get('priority', 'LOW'),
+            "Action": action,
+            
+            "Entry_Trigger": data.get('entry_trigger', ''),
+            "Invalidation": data.get('invalidation_level', ''),
+            
+            # Key levels is a list usually
+            "Key_Level_Support": (data.get('key_levels', []) + [''])[0] if isinstance(data.get('key_levels'), list) and data.get('key_levels') else '',
+            "Key_Level_Resistance": (data.get('key_levels', []) + ['',''])[1] if isinstance(data.get('key_levels'), list) and len(data.get('key_levels', []))>1 else '',
+            
+            "Weekly_CLV": data.get('latest_weekly_clv', ''),
+            "Weekly_RelVol": data.get('latest_weekly_relvol', ''),
+            "Current_Price": data.get('current_price', '')
+        }
+        writer.writerow(row)
+        
+    return output.getvalue()
+
 def save_report():
     results = load_results()
     if not results:
@@ -119,7 +242,13 @@ def save_report():
     with open(filename, 'w', encoding='utf-8') as f:
         f.write(report_content)
         
-    logging.info(f"Report generated: {filename}")
+    # NEW: Generate CSV
+    csv_content = generate_csv(results)
+    csv_filename = f"{REPORT_DIR}/REPORT_{datetime.now().strftime('%Y-%m-%d')}.csv"
+    with open(csv_filename, 'w', encoding='utf-8') as f:
+        f.write(csv_content)
+        
+    logging.info(f"Report generated: {filename} and {csv_filename}")
 
 if __name__ == "__main__":
     save_report()

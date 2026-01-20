@@ -1,5 +1,4 @@
 yfinance
 pandas
 google-generativeai
-ta-lib
-numpy
+requests-cache

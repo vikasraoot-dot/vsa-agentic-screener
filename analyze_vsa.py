@@ -72,7 +72,14 @@ def analyze_batch(model_id, batch_data, market_context):
     
     for ticker, data in batch_data.items():
         batch_prompt_content += f"\n--- Ticker: {ticker} ---\n"
-        batch_prompt_content += f"Trigger: {data.get('reason')}\n"
+        batch_prompt_content += f"Algo Detection: {data.get('reason')}\n"
+        batch_prompt_content += f"Quarterly Context: {data.get('quarterly_context', 'N/A')}\n"
+        
+        w_sig = data.get('weekly_signal', {})
+        m_sig = data.get('monthly_signal', {})
+        batch_prompt_content += f"Weekly Sequence: {w_sig.get('type')} ({w_sig.get('status')})\n"
+        batch_prompt_content += f"Monthly Sequence: {m_sig.get('type')} ({m_sig.get('status')})\n"
+        
         # Only take last 5 weekly and 3 monthly to save tokens, focusing on recent behavior
         weekly_subset = dict(list(data.get('weekly_data', {}).items())[-5:])
         monthly_subset = dict(list(data.get('monthly_data', {}).items())[-3:])
@@ -117,8 +124,29 @@ def run_analysis():
         return
 
     api_key = os.environ.get("GEMINI_API_KEY")
+    
+    # Passthrough Mode if API Key is missing
     if not api_key:
-        logging.error("GEMINI_API_KEY environment variable not set")
+        logging.warning("GEMINI_API_KEY not set. Running in PASSTHROUGH MODE (Algo signals only).")
+        results = {}
+        for ticker, data in tickers_data.items():
+            # Copy all data
+            res = data.copy()
+            # Determine Verdict based on signal type
+            w_type = data.get('weekly_signal', {}).get('type', 'NONE')
+            if 'STOPPING' in w_type or 'TEST' in w_type:
+                res['verdict'] = "BULLISH_SETUP"
+            elif 'CLIMAX' in w_type or 'DOMINANCE' in w_type:
+                res['verdict'] = "BEARISH_SETUP"
+            else:
+                res['verdict'] = "NEUTRAL"
+                
+            res['vsa_status'] = data.get('reason', 'Signal Detected')
+            results[ticker] = res
+            
+        with open(OUTPUT_FILE, 'w') as f:
+            json.dump(results, f, indent=4)
+        logging.info(f"Passthrough complete. Saved {len(results)} results to {OUTPUT_FILE}")
         return
 
     try:
@@ -155,7 +183,16 @@ def run_analysis():
                     if ticker not in batch_keys: 
                         logging.warning(f"LLM hallucinated ticker {ticker} not in batch {batch_keys}")
                     else:
-                        results[ticker] = res
+                        # Merge LLM results with Algorithmic data
+                        # We prioritize Algo data for 'Priority' and 'Signals', LLM for 'Verdict' and 'Logic'
+                        combined = tickers_data[ticker].copy()
+                        combined.update(res)
+                        
+                        # Explicitly keep Algo Priority if it exists (LLM doesn't calculate it)
+                        if 'priority' in tickers_data[ticker]:
+                             combined['priority'] = tickers_data[ticker]['priority']
+                             
+                        results[ticker] = combined
         
         time.sleep(15) # Buffer between batches
         
