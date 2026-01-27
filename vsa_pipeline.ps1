@@ -62,11 +62,11 @@ finally {
 
 Write-Step "2. Analyzing VSA Signals (analyze_vsa.py)"
 # Check API Key
-if (-not $env:GEMINI_API_KEY) {
-    Write-Host "WARNING: GEMINI_API_KEY not set. Running in PASSTHROUGH MODE." -ForegroundColor Yellow
+if (-not $env:ANTHROPIC_API_KEY) {
+    Write-Host "WARNING: ANTHROPIC_API_KEY not set. Running in PASSTHROUGH MODE." -ForegroundColor Yellow
 }
 else {
-    Write-Host "Gemini API Key detected. Running Full Analysis." -ForegroundColor Green
+    Write-Host "Anthropic API Key detected. Running Full Analysis with Claude Opus 4.5." -ForegroundColor Green
 }
 
 python analyze_vsa.py

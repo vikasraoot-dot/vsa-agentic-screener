@@ -32,9 +32,9 @@ jobs:
     - name: Filter Tickers
       run: python filter_tickers.py
 
-    - name: Run VSA Analysis (Gemini)
+    - name: Run VSA Analysis (Claude Opus 4.5)
       env:
-        GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
+        ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
       run: python analyze_vsa.py
 
     - name: Generate Report
