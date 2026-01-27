@@ -11,8 +11,8 @@ logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(
 INPUT_FILE = 'filtered_tickers.json'
 OUTPUT_FILE = 'vsa_results.json'
 
-# Claude Opus 4.5 model ID
-CLAUDE_MODEL = "claude-opus-4-5-20251101"
+# Claude Sonnet 4 model ID (cost-effective, high quality)
+CLAUDE_MODEL = "claude-sonnet-4-20250514"
 
 def load_filtered_tickers():
     if not os.path.exists(INPUT_FILE):
@@ -169,7 +169,7 @@ def run_analysis():
         logging.info(f"Passthrough complete. Saved {len(results)} results to {OUTPUT_FILE}")
         return
 
-    logging.info(f"Using Claude Opus 4.5 ({CLAUDE_MODEL}) for VSA analysis...")
+    logging.info(f"Using Claude Sonnet 4 ({CLAUDE_MODEL}) for VSA analysis...")
 
     # Fetch Market Context
     logging.info("Fetching Market Context (SPY)...")

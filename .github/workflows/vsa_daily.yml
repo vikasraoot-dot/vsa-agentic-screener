@@ -32,7 +32,7 @@ jobs:
     - name: Filter Tickers
       run: python filter_tickers.py
 
-    - name: Run VSA Analysis (Claude Opus 4.5)
+    - name: Run VSA Analysis (Claude Sonnet 4)
       env:
         ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
       run: python analyze_vsa.py

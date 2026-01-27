@@ -1,12 +1,12 @@
 # VSA Agentic Screener
 
-This project implements an automated Volume Spread Analysis (VSA) screener using Python and Claude Opus 4.5 (Anthropic).
+This project implements an automated Volume Spread Analysis (VSA) screener using Python and Claude Sonnet 4 (Anthropic).
 
 ## Overview
 
 The workflow consists of three main steps:
 1.  **Filter**: `filter_tickers.py` scans a list of tickers (`tickers.txt`) and selects those where current volume on Weekly or Monthly timeframes is greater than the 20-period SMA.
-2.  **Analyze**: `analyze_vsa.py` takes the filtered tickers and their OHLCV data, and sends it to Claude Opus 4.5 to perform a deep VSA analysis.
+2.  **Analyze**: `analyze_vsa.py` takes the filtered tickers and their OHLCV data, and sends it to Claude Sonnet 4 to perform a deep VSA analysis.
 3.  **Report**: `generate_report.py` compiles the analysis into a daily Markdown report in the `reports/` folder.
 
 ## Setup

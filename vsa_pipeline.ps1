@@ -66,7 +66,7 @@ if (-not $env:ANTHROPIC_API_KEY) {
     Write-Host "WARNING: ANTHROPIC_API_KEY not set. Running in PASSTHROUGH MODE." -ForegroundColor Yellow
 }
 else {
-    Write-Host "Anthropic API Key detected. Running Full Analysis with Claude Opus 4.5." -ForegroundColor Green
+    Write-Host "Anthropic API Key detected. Running Full Analysis with Claude Sonnet 4." -ForegroundColor Green
 }
 
 python analyze_vsa.py
