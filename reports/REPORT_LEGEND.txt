@@ -1,0 +1,19 @@
+VSA SCREENER RESULTS - LEGEND
+-----------------------------
+CLV (Close Location Value): +1.0 (High Close) to -1.0 (Low Close). >0.5 Bullish, <-0.5 Bearish.
+RelVol (Relative Volume): Ratio vs 20SMA. >1.5 High, >2.0 Ultra High, <0.7 Low.
+PRIORITIES:
+  VERY_HIGH: Monthly Confirmed + Weekly Confirmed (Perfect Alignment)
+  HIGH: Monthly Confirmed + Weekly Stopping Volume (Sequence Early) OR Monthly Context + Weekly Confirmed
+  MEDIUM: Weekly Confirmed (No Monthly support) OR Monthly Confirmed (No Weekly support)
+  LOW: Watchlist only (Accumulation detected but no confirmation)
+ACTION:
+  ENTER_NOW: Confirmed Signal + Daily Trigger Met
+  WAIT_FOR_TEST: Anchor found, waiting for Test
+COLUMNS:
+  Anchor_Date: The date of the initial VSA signal. Types:
+     - STOPPING_VOLUME: Bullish Anchor (Down bar, High Vol, Close off lows)
+     - BUYING_CLIMAX: Bearish Anchor (Up bar, High Vol, Weak Close)
+     - SUPPLY_DOMINANCE: Bearish Anchor (Down bar, High Vol, Weak Close)
+  Test1/Test2_Date: The dates of subsequent confirmation bars (Tests) on the same timeframe.
+  Daily_Confirmation: 'TEST_OBSERVED' if a Test pattern appeared on the Daily chart in the last 5 days.
